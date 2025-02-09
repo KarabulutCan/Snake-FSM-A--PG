@@ -3,8 +3,11 @@ using UnityEngine;
 
 public class FoodSpawner : MonoBehaviour
 {
-    [Header("Yem Prefab")]
-    public GameObject foodPrefab;
+    [Header("Yem Prefab (Tek)")]
+    public GameObject foodPrefab; // Üzerinde Food.cs olan tek prefab
+
+    [Header("Farklı Yem Spriteleri")]
+    public Sprite[] foodSprites;  // Rastgele seçmek istediğiniz spriteler
 
     [Header("Harita Boyutu")]
     public int width = 20;
@@ -15,7 +18,7 @@ public class FoodSpawner : MonoBehaviour
 
     private void Start()
     {
-        snake = FindObjectOfType<SnakeAI>();
+        snake = Object.FindAnyObjectByType<SnakeAI>();
         SpawnFood();
     }
 
@@ -27,12 +30,21 @@ public class FoodSpawner : MonoBehaviour
             Destroy(currentFood);
         }
 
-        // Rastgele geçerli pozisyon bul (Aşağıdaki fonksiyonda tüm kontroller var)
+        // Rastgele geçerli pozisyon bul (aşağıdaki fonksiyon tüm kontrolleri yapar)
         Vector2Int spawnPos = GetRandomValidPosition();
 
         // Yem oluştur
         Vector3 pos = new Vector3(spawnPos.x, spawnPos.y, 0f);
         currentFood = Instantiate(foodPrefab, pos, Quaternion.identity);
+
+        // Rastgele sprite atama
+        // (Prefab'in üzerinde bir SpriteRenderer olduğunu varsayıyoruz)
+        SpriteRenderer sr = currentFood.GetComponent<SpriteRenderer>();
+        if (sr != null && foodSprites != null && foodSprites.Length > 0)
+        {
+            int index = Random.Range(0, foodSprites.Length);
+            sr.sprite = foodSprites[index];
+        }
 
         // Yılan AI'ya bildir
         if (snake != null)
@@ -43,8 +55,11 @@ public class FoodSpawner : MonoBehaviour
 
     private Vector2Int GetRandomValidPosition()
     {
-        ProceduralLevelGenerator generator = FindObjectOfType<ProceduralLevelGenerator>();
-        List<Vector2Int> obstacles = (generator != null) ? generator.GetObstaclePositions() : new List<Vector2Int>();
+        // Procedural haritadan engelleri okuyalım
+        ProceduralLevelGenerator generator = Object.FindAnyObjectByType<ProceduralLevelGenerator>();
+        List<Vector2Int> obstacles = (generator != null)
+            ? generator.GetObstaclePositions()
+            : new List<Vector2Int>();
 
         // Yılan kafası grid pozisyonu
         Vector2Int snakeHeadPos = new Vector2Int(
@@ -52,23 +67,22 @@ public class FoodSpawner : MonoBehaviour
             Mathf.RoundToInt(snake.transform.position.y)
         );
 
-        // Belirli sayıda deneme hakkı (örneğin 200) verelim
-        // (Harita çok doluysa sonsuza kadar döngüye girmemek için)
+        // Harita çok doluysa aşırı döngüye girmemek için max deneme sayısı
         int maxAttempts = 200;
         for (int i = 0; i < maxAttempts; i++)
         {
-            // 1) Sınırlar içinde rastgele
+            // (1) Sınırlar içinde rastgele
             int rx = Random.Range(0, width);
             int ry = Random.Range(0, height);
             Vector2Int randPos = new Vector2Int(rx, ry);
 
-            // 2) Obstacle veya boundary üzerinde mi?
+            // (2) Obstacle veya boundary üzerinde mi?
             if (obstacles.Contains(randPos))
             {
-                continue; // geçersiz -> sonraki deneme
+                continue;
             }
 
-            // 3) Yılan segmentleri üzerinde mi?
+            // (3) Yılan segmentleri üzerinde mi?
             bool onSnake = false;
             foreach (Transform seg in snake.GetSegments())
             {
@@ -84,7 +98,7 @@ public class FoodSpawner : MonoBehaviour
             }
             if (onSnake) continue;
 
-            // 4) Yılan kafasından buraya A* path var mı?
+            // (4) Yılan kafasından buraya A* path var mı?
             var path = AStarPathfinding.Instance.FindPath(snakeHeadPos, randPos);
             if (path == null || path.Count == 0)
             {
@@ -92,12 +106,11 @@ public class FoodSpawner : MonoBehaviour
                 continue;
             }
 
-            // Yukarıdaki 4 kontrolü geçen nokta geçerlidir
+            // 4 koşulu da geçen nokta uygundur
             return randPos;
         }
 
-        // Eğer bu kadar denemede bulamadıysak 
-        // (harita tamamen tıkanmış olabilir)
+        // 200 deneme içinde yer bulamadıysa 
         Debug.LogWarning("Uygun bir Food yeri bulunamadı, varsayılan (0,0) dönülüyor!");
         return Vector2Int.zero;
     }

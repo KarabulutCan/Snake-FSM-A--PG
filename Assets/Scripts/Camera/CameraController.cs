@@ -1,5 +1,4 @@
-﻿// Assets/Scripts/CameraController.cs
-using UnityEngine;
+﻿using UnityEngine;
 
 [RequireComponent(typeof(Camera))]
 public class CameraController : MonoBehaviour
@@ -10,39 +9,49 @@ public class CameraController : MonoBehaviour
     {
         cam = GetComponent<Camera>();
 
-        // LevelGenerator bulalım
-        ProceduralLevelGenerator generator = FindObjectOfType<ProceduralLevelGenerator>();
+        // ProceduralLevelGenerator bul
+        ProceduralLevelGenerator generator = Object.FindAnyObjectByType<ProceduralLevelGenerator>();
         if (generator != null)
         {
-            int w = generator.width;
-            int h = generator.height;
+            // Oyun alanının dış sınırları
+            // Örn: -1..width ve -1..height arasında duvar yerleştirdiyseniz:
+            int left = -1;
+            int right = generator.width;  // x = width
+            int bottom = -1;
+            int top = generator.height;   // y = height
 
-            // Kamerayı merkeze al
-            transform.position = new Vector3(w / 2f, h / 2f, -10f);
+            // Merkez noktayı hesapla
+            float centerX = (left + right) / 2f;   // (örn. -1 + 20) / 2 = 9.5
+            float centerY = (bottom + top) / 2f;   // (örn. -1 + 20) / 2 = 9.5
 
-            // Aspect ratio'ya göre orthographic size hesapla
-            // Basitçe "yüksekliğin yarısı"na ayarlayalım:
-            float aspect = cam.aspect; // width / height
-            float desiredHalfHeight = h / 2f;
+            // Toplam genişlik / yükseklik (örn. 21×21)
+            float totalWidth = (right - left);     // 20 - (-1) = 21
+            float totalHeight = (top - bottom);    // 20 - (-1) = 21
 
-            // Ekran en-boy oranı, alanın enine mi dikine mi uzun olduğuna göre 
-            // orthographicSize'ı ayarlayabiliriz.
-            // formül: orthoSize = max(alanYarısı, alanYarısı / aspect?)
-            // Aslında "width / 2 / aspect" = height needed
-            // Tekrar basit bir kontrol yapalım:
+            // Yarı genişlik / yükseklik
+            float halfWidth = totalWidth / 2f;     // 21 / 2 = 10.5
+            float halfHeight = totalHeight / 2f;   // 21 / 2 = 10.5
 
-            // Yükseklik boyutu
-            float sizeBasedOnHeight = desiredHalfHeight;
-            // Genişlik boyutu (en / 2)
-            float sizeBasedOnWidth = (w / 2f) / aspect;
+            // Kameranın en-boy oranı
+            float aspect = cam.aspect;  // (ekran genişliği / yüksekliği)
 
-            // Hangisi büyükse onu al (böylece tüm alanı sığdırır)
+            // Yüksekliğe göre ortographicSize
+            float sizeBasedOnHeight = halfHeight;
+            // Genişliğe göre ortographicSize
+            float sizeBasedOnWidth = halfWidth / aspect;
+
+            // Hangisi büyükse onu seç (tüm haritayı sığdırmak için)
             float finalSize = Mathf.Max(sizeBasedOnHeight, sizeBasedOnWidth);
+
+            // Kamerayı merkez noktaya taşı, Z eksenini -10 tut
+            transform.position = new Vector3(centerX, centerY, -10f);
+
+            // OrthoSize'ı ayarla
             cam.orthographicSize = finalSize;
         }
         else
         {
-            // Varsayılan bir konum/size
+            // Eğer generator yoksa varsayılan
             transform.position = new Vector3(10, 10, -10);
             cam.orthographicSize = 10f;
         }
