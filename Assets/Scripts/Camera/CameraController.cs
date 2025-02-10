@@ -9,49 +9,36 @@ public class CameraController : MonoBehaviour
     {
         cam = GetComponent<Camera>();
 
-        // ProceduralLevelGenerator bul
-        ProceduralLevelGenerator generator = Object.FindAnyObjectByType<ProceduralLevelGenerator>();
+        // 1) Ekranı 16:9'a sabitlemek isterseniz:
+        //Screen.SetResolution(1920, 1080, false);
+
+        // 2) ProceduralLevelGenerator bul
+        ProceduralLevelGenerator generator = FindObjectOfType<ProceduralLevelGenerator>();
         if (generator != null)
         {
-            // Oyun alanının dış sınırları
-            // Örn: -1..width ve -1..height arasında duvar yerleştirdiyseniz:
-            int left = -1;
-            int right = generator.width;  // x = width
-            int bottom = -1;
-            int top = generator.height;   // y = height
+            int w = generator.width;
+            int h = generator.height;
 
-            // Merkez noktayı hesapla
-            float centerX = (left + right) / 2f;   // (örn. -1 + 20) / 2 = 9.5
-            float centerY = (bottom + top) / 2f;   // (örn. -1 + 20) / 2 = 9.5
+            // Kamerayı merkez noktaya yerleştir
+            transform.position = new Vector3(w / 2f, h / 2f, -10f);
 
-            // Toplam genişlik / yükseklik (örn. 21×21)
-            float totalWidth = (right - left);     // 20 - (-1) = 21
-            float totalHeight = (top - bottom);    // 20 - (-1) = 21
+            // Manuel 16:9 aspect
+            float forcedAspect = 16f / 9f;
 
-            // Yarı genişlik / yükseklik
-            float halfWidth = totalWidth / 2f;     // 21 / 2 = 10.5
-            float halfHeight = totalHeight / 2f;   // 21 / 2 = 10.5
+            // Haritanın tamamını göstermek için:
+            // Yarı yükseklik = h/2
+            float sizeBasedOnHeight = h / 2f;
+            // Yarı genişliği 16:9'a göre hesaplarsak => (w/2) / forcedAspect
+            float sizeBasedOnWidth = (w / 2f) / forcedAspect;
 
-            // Kameranın en-boy oranı
-            float aspect = cam.aspect;  // (ekran genişliği / yüksekliği)
-
-            // Yüksekliğe göre ortographicSize
-            float sizeBasedOnHeight = halfHeight;
-            // Genişliğe göre ortographicSize
-            float sizeBasedOnWidth = halfWidth / aspect;
-
-            // Hangisi büyükse onu seç (tüm haritayı sığdırmak için)
+            // Hangisi büyükse, onu camera.orthographicSize yap
             float finalSize = Mathf.Max(sizeBasedOnHeight, sizeBasedOnWidth);
 
-            // Kamerayı merkez noktaya taşı, Z eksenini -10 tut
-            transform.position = new Vector3(centerX, centerY, -10f);
-
-            // OrthoSize'ı ayarla
             cam.orthographicSize = finalSize;
         }
         else
         {
-            // Eğer generator yoksa varsayılan
+            // Yedek ayar
             transform.position = new Vector3(10, 10, -10);
             cam.orthographicSize = 10f;
         }

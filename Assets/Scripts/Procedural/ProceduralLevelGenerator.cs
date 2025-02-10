@@ -1,6 +1,6 @@
-﻿// Assets/Scripts/Procedural/ProceduralLevelGenerator.cs
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Tilemaps;
 
 public class ProceduralLevelGenerator : MonoBehaviour
 {
@@ -8,17 +8,27 @@ public class ProceduralLevelGenerator : MonoBehaviour
     public int width = 20;
     public int height = 20;
 
-    [Header("Engel Prefab")]
-    public GameObject obstaclePrefab;
+    [Header("Tilemap ve Tile'lar")]
+    // DİKKAT: Artık iki ayrı Tilemap kullanıyoruz
+    public Tilemap floorTilemap;   // Zemin Tilemap
+    public Tilemap wallTilemap;    // Duvar Tilemap
 
-    [Header("Duvar (Boundary) Prefab")]
-    public GameObject boundaryPrefab;
+    public TileBase wallTile;
+    public TileBase floorTile;
 
-    [Header("Engel Oluşma İhtimali [0-1]")]
+    [Header("Cellular Automata Parametreleri")]
     [Range(0f, 1f)]
-    public float obstacleChance = 0.1f;
+    public float fillPercent = 0.45f;
+    public int smoothIterations = 5;
 
-    // Engellerin grid pozisyonlarını tutar
+    [Header("Spawn Bölgesi (0,0 etrafında boşluk)")]
+    public int spawnAreaWidth = 10;
+    public int spawnAreaHeight = 10;
+
+    // Harita datası (1=duvar, 0=zemin)
+    private int[,] map;
+
+    // A* engeller için duvar listesini tutar
     private List<Vector2Int> obstaclePositions = new List<Vector2Int>();
 
     private void Start()
@@ -28,89 +38,146 @@ public class ProceduralLevelGenerator : MonoBehaviour
 
     public void GenerateLevel()
     {
-        // Eski engelleri/duvarları temizle
-        foreach (Transform child in transform)
-        {
-            Destroy(child.gameObject);
-        }
+        // 1) Tilemap'leri temizle (zemin + duvar)
+        if (floorTilemap != null) floorTilemap.ClearAllTiles();
+        if (wallTilemap != null) wallTilemap.ClearAllTiles();
 
         obstaclePositions.Clear();
 
-        // 1) Rastgele engeller
-        for (int x = 0; x < width; x++)
-        {
-            for (int y = 0; y < height; y++)
-            {
-                if (Random.value < obstacleChance)
-                {
-                    Vector2Int pos = new Vector2Int(x, y);
-                    obstaclePositions.Add(pos);
+        // 2) Haritayı rastgele oluştur (Cellular Automata)
+        map = new int[width, height];
+        RandomFillMap();
 
-                    Vector3 worldPos = new Vector3(x, y, 0f);
-                    Instantiate(obstaclePrefab, worldPos, Quaternion.identity, transform);
-                }
-            }
+        for (int i = 0; i < smoothIterations; i++)
+        {
+            SmoothMap();
         }
 
-        // 2) Sınır duvarlarını oluştur
-        CreateBoundaryWalls();
+        // (0,0) etrafında spawnAreaWidth × spawnAreaHeight bölgesini her zaman zemin yap
+        ForceFloorArea(spawnAreaWidth, spawnAreaHeight);
 
-        // 3) AStarPathfinding'i güncelle
+        // 3) İki ayrı Tilemap'e çiz
+        DrawTilesOnTilemaps();
+
+        // 4) A* pathfinding'i güncelle
         if (AStarPathfinding.Instance != null)
         {
             AStarPathfinding.Instance.RefreshGrid(width, height, obstaclePositions);
         }
     }
 
-    private void CreateBoundaryWalls()
+    private void RandomFillMap()
     {
-        // Haritanın etrafını kapatacak şekilde:
-        // Alt sıra (y = -1)
-        for (int x = -1; x <= width; x++)
+        System.Random prng = new System.Random();
+        for (int x = 0; x < width; x++)
         {
-            Vector2Int pos = new Vector2Int(x, -1);
-            obstaclePositions.Add(pos);
-
-            Vector3 worldPos = new Vector3(x, -1, 0f);
-            Instantiate(boundaryPrefab, worldPos, Quaternion.identity, transform);
-        }
-
-        // Üst sıra (y = height)
-        for (int x = -1; x <= width; x++)
-        {
-            Vector2Int pos = new Vector2Int(x, height);
-            obstaclePositions.Add(pos);
-
-            Vector3 worldPos = new Vector3(x, height, 0f);
-            Instantiate(boundaryPrefab, worldPos, Quaternion.identity, transform);
-        }
-
-        // Sol sütun (x = -1)
-        for (int y = 0; y < height; y++)
-        {
-            Vector2Int pos = new Vector2Int(-1, y);
-            obstaclePositions.Add(pos);
-
-            Vector3 worldPos = new Vector3(-1, y, 0f);
-            Instantiate(boundaryPrefab, worldPos, Quaternion.identity, transform);
-        }
-
-        // Sağ sütun (x = width)
-        for (int y = 0; y < height; y++)
-        {
-            Vector2Int pos = new Vector2Int(width, y);
-            obstaclePositions.Add(pos);
-
-            Vector3 worldPos = new Vector3(width, y, 0f);
-            Instantiate(boundaryPrefab, worldPos, Quaternion.identity, transform);
+            for (int y = 0; y < height; y++)
+            {
+                if (prng.NextDouble() < fillPercent)
+                    map[x, y] = 1; // duvar
+                else
+                    map[x, y] = 0; // zemin
+            }
         }
     }
 
-    // Obstacles listesini isteyenler için
+    private void SmoothMap()
+    {
+        int[,] newMap = new int[width, height];
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                int neighbourCount = GetSurroundingWallCount(x, y);
+                if (neighbourCount > 4)
+                    newMap[x, y] = 1;
+                else if (neighbourCount < 4)
+                    newMap[x, y] = 0;
+                else
+                    newMap[x, y] = map[x, y];
+            }
+        }
+        map = newMap;
+    }
+
+    private int GetSurroundingWallCount(int cx, int cy)
+    {
+        int count = 0;
+        for (int nx = cx - 1; nx <= cx + 1; nx++)
+        {
+            for (int ny = cy - 1; ny <= cy + 1; ny++)
+            {
+                if (nx >= 0 && nx < width && ny >= 0 && ny < height)
+                {
+                    if (!(nx == cx && ny == cy))
+                    {
+                        count += map[nx, ny];
+                    }
+                }
+                else
+                {
+                    // Harita dışını duvar say
+                    count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    /// <summary>
+    /// (0,0) etrafında belirli bir genişlik/yükseklikteki alanı zorunlu zemin yapar.
+    /// </summary>
+    private void ForceFloorArea(int areaWidth, int areaHeight)
+    {
+        for (int x = 0; x < areaWidth; x++)
+        {
+            for (int y = 0; y < areaHeight; y++)
+            {
+                if (x < width && y < height)
+                {
+                    map[x, y] = 0; // daima zemin
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Haritayı iki farklı Tilemap'e (floor + wall) çizer.
+    /// </summary>
+    private void DrawTilesOnTilemaps()
+    {
+        // Varsa yoksa kontrol
+        if (floorTilemap == null || wallTilemap == null)
+        {
+            Debug.LogWarning("FloorTilemap veya WallTilemap atanmamış!");
+            return;
+        }
+
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                // Tilemap koordinatına dönüştür
+                Vector3Int tilePos = new Vector3Int(x, y, 0);
+
+                // Duvar mı zemin mi?
+                if (map[x, y] == 1)
+                {
+                    // Duvar tile'ı
+                    wallTilemap.SetTile(tilePos, wallTile);
+                    obstaclePositions.Add(new Vector2Int(x, y));
+                }
+                else
+                {
+                    // Zemin tile'ı
+                    floorTilemap.SetTile(tilePos, floorTile);
+                }
+            }
+        }
+    }
+
     public List<Vector2Int> GetObstaclePositions()
     {
         return obstaclePositions;
     }
-
-
 }

@@ -25,14 +25,12 @@ public class SnakeAI : MonoBehaviour
     private float stepTimer;
     private Vector2Int foodGridPos; // Yem hedefi
 
-    // Kafa SpriteRenderer (kendi GameObject'imizde)
+    // Kafa SpriteRenderer (SnakeAI objesi üstünde olmalı)
     private SpriteRenderer headSpriteRenderer;
 
     private void Start()
     {
         fsm = GetComponent<FiniteStateMachine>();
-
-        // Bu obje yılanın kafası, üzerinde SpriteRenderer olmalı
         headSpriteRenderer = GetComponent<SpriteRenderer>();
 
         ResetState();
@@ -43,7 +41,6 @@ public class SnakeAI : MonoBehaviour
 
     private void Update()
     {
-        // Adım zamanı kontrolü
         stepTimer += Time.deltaTime;
         if (stepTimer >= stepTime)
         {
@@ -53,31 +50,31 @@ public class SnakeAI : MonoBehaviour
     }
 
     /// <summary>
-    /// Yılanı başlangıç durumuna döndürür.
+    /// Yılanı başa döndürür (segmentleri siler, konumu sıfırlar vb.)
     /// </summary>
     public void ResetState()
     {
-        // Var olan segmentleri sil
+        // Eski segmentleri yok et
         foreach (Transform seg in segments)
         {
-            if (seg != this.transform)
+            if (seg != this.transform) // kafanın kendisi değilse
             {
                 Destroy(seg.gameObject);
             }
         }
         segments.Clear();
 
-        // segments[0] -> Kafa (bu objenin Transform'u)
+        // segments[0] -> kafa (bu objenin transform'u)
         segments.Add(this.transform);
         transform.position = Vector3.zero;
 
-        // Başlangıç uzunluğu
+        // Başlangıç gövde uzunluğu
         for (int i = 1; i < initialSize; i++)
         {
             Grow();
         }
 
-        // İsteğe bağlı: Kafayı yukarı sprite ile başlat
+        // Kafayı yukarı sprite ile başlat (opsiyonel)
         if (headSpriteRenderer != null && headUp != null)
         {
             headSpriteRenderer.sprite = headUp;
@@ -85,15 +82,15 @@ public class SnakeAI : MonoBehaviour
     }
 
     /// <summary>
-    /// Yeni bir gövde segmenti eklenir (yem yendiğinde).
+    /// Yeni gövde segmenti ekle (yem yendiğinde çağrılır).
     /// </summary>
     public void Grow()
     {
-        // Son segmentin olduğu konumda başlat
+        // Son segmentin konumuna
         Vector3 tailPos = segments[segments.Count - 1].position;
         Transform newSegment = Instantiate(segmentPrefab, tailPos, Quaternion.identity).transform;
 
-        // Gövdeye sprite atama
+        // Gövde sprite
         SpriteRenderer sr = newSegment.GetComponent<SpriteRenderer>();
         if (sr != null && bodySprite != null)
         {
@@ -104,7 +101,7 @@ public class SnakeAI : MonoBehaviour
     }
 
     /// <summary>
-    /// FoodSpawner tarafından yemeğin grid pozisyonu bildiriliyor.
+    /// FoodSpawner'dan yem grid pozisyonu bilgisi alıyoruz.
     /// </summary>
     public void SetFoodPosition(Vector2Int foodPos)
     {
@@ -112,7 +109,7 @@ public class SnakeAI : MonoBehaviour
     }
 
     /// <summary>
-    /// IdleState içinde çağrılır: Yem için path aranır vs.
+    /// IdleState içinden çağrılabilir: Yem için path aranır, hareket tetiklenir.
     /// </summary>
     public void FindFoodAndMove()
     {
@@ -124,72 +121,80 @@ public class SnakeAI : MonoBehaviour
         var path = AStarPathfinding.Instance.FindPath(headPos, foodGridPos);
         if (path == null || path.Count == 0)
         {
-            // Yem ulaşılmazsa
             Debug.Log("Yol bulunamadı!");
         }
     }
 
     /// <summary>
-    /// Her stepTime'da bir adım atar.
+    /// Her stepTime'da bir adım at.
     /// </summary>
     private void MoveOneStep()
     {
-        // 1) Yılanın gövdesini pathfinding engeli olarak işaretle
+        // 1) Yılan gövdesini engel kabul ettir
         UpdatePathfindingWithBody();
 
-        // 2) Path'i bul
+        // 2) Mevcut kafa pozisyonu
         Vector2Int headPos = new Vector2Int(
             Mathf.RoundToInt(transform.position.x),
             Mathf.RoundToInt(transform.position.y)
         );
 
+        // 3) Path bul
         var path = AStarPathfinding.Instance.FindPath(headPos, foodGridPos);
         if (path != null && path.Count > 0)
         {
-            // Normal path takip rutini...
             Vector2Int nextPos = path[0];
             if (nextPos == headPos && path.Count > 1)
             {
                 nextPos = path[1];
             }
 
-            // Kafanın gideceği yön
             Vector2Int direction = nextPos - headPos;
-
-            // 3) Kafanın Sprite'ını yönüne göre güncelle
             UpdateHeadSprite(direction);
 
-            // 4) Self-collision kontrolü (kendi gövdesi mi?)
+            // Self-collision kontrolü
             if (CheckSelfCollision(nextPos))
             {
                 GameManager.Instance.GameOver();
-                return; // Bu adımda hareket etme
+                return;
             }
 
-            // 5) Gövdeyi kaydır (son segmentten başlayarak)
+            // Duvar/harita dışı kontrolü
+            if (!AStarPathfinding.Instance.IsInBounds(nextPos) ||
+                !AStarPathfinding.Instance.IsWalkable(nextPos))
+            {
+                Debug.Log("Duvara veya harita dışına ilerliyor!");
+                GameManager.Instance.GameOver();
+                return;
+            }
+
+            // Gövdeyi kaydır
             for (int i = segments.Count - 1; i > 0; i--)
             {
                 segments[i].position = segments[i - 1].position;
             }
 
-            // 6) Kafayı yeni konuma taşı
+            // Kafayı yeni konuma taşı
             transform.position = new Vector3(nextPos.x, nextPos.y, 0f);
         }
         else
         {
             // Yol bulunamadı
             Debug.Log("Yol bulunamadı!");
+            // Burada GameOver yapmak istiyorsanız:
+            GameManager.Instance.GameOver();
+            // veya isterseniz "return" vb. eklersiniz
         }
     }
 
+
     /// <summary>
-    /// Kafanın yönü (Vector2Int direction) doğrultusunda uygun kafa sprite'ı seçer.
+    /// Kafayı yönüne göre sprite değiştirme
     /// </summary>
     private void UpdateHeadSprite(Vector2Int direction)
     {
         if (headSpriteRenderer == null) return;
 
-        // direction.x > 0 => sağ
         if (direction.x > 0)
         {
             headSpriteRenderer.sprite = headRight;
@@ -209,14 +214,13 @@ public class SnakeAI : MonoBehaviour
     }
 
     /// <summary>
-    /// Bir sonraki kafa konumu "nextPos" gövdenin bir parçası mı?
-    /// Evet ise true döner => GameOver
+    /// nextPos eğer gövde segmentlerinden biriyle çakışırsa => çarpışma
     /// </summary>
     private bool CheckSelfCollision(Vector2Int nextPos)
     {
+        // i=1 den başla -> segment[0] kafa
         for (int i = 1; i < segments.Count; i++)
         {
-            // opsiyonel: Kuyruğu hariç tutmak isterseniz "if (i == segments.Count - 1) continue;"
             Vector2Int segPos = new Vector2Int(
                 Mathf.RoundToInt(segments[i].position.x),
                 Mathf.RoundToInt(segments[i].position.y)
@@ -230,7 +234,7 @@ public class SnakeAI : MonoBehaviour
     }
 
     /// <summary>
-    /// Yem yendiğinde dışarıdan çağrılır -> Yılan uzar
+    /// Yem yendi => yılan uzar
     /// </summary>
     public void OnFoodEaten()
     {
@@ -238,7 +242,7 @@ public class SnakeAI : MonoBehaviour
     }
 
     /// <summary>
-    /// FoodSpawner'ın yılan segmentlerini kontrol edebilmesi için.
+    /// Segment listesini döndürür (FoodSpawner vs. kullanabilir)
     /// </summary>
     public List<Transform> GetSegments()
     {
@@ -246,21 +250,20 @@ public class SnakeAI : MonoBehaviour
     }
 
     /// <summary>
-    /// Pathfinding'de yılanın gövdesini engel gibi işaretlemek için.
+    /// A* pathfinding için yılan gövdesini de engel kabul etmek üzere grid'i günceller
     /// </summary>
     private void UpdatePathfindingWithBody()
     {
-        // Procedural generator
         ProceduralLevelGenerator generator = Object.FindAnyObjectByType<ProceduralLevelGenerator>();
         if (generator == null) return;
 
-        // Mevcut engelleri al
+        // Duvar ve boundary engelleri al
         List<Vector2Int> baseObstacles = generator.GetObstaclePositions();
 
-        // Yılan gövdesini de ekleyip "combinedObstacles" listesi oluştur
+        // Yılan gövdesini de ekleyelim
         List<Vector2Int> combinedObstacles = new List<Vector2Int>(baseObstacles);
 
-        // Tüm segmentleri engel say (kuyruğu hariç tutmak istersen => i < segments.Count - 1)
+        // Kuyruğu hariç tutmak istersen i < segments.Count - 1
         for (int i = 1; i < segments.Count; i++)
         {
             Vector2Int segPos = new Vector2Int(
@@ -270,7 +273,7 @@ public class SnakeAI : MonoBehaviour
             combinedObstacles.Add(segPos);
         }
 
-        // A* grid'ini yenile
+        // Grid'i yenile
         int mapW = generator.width;
         int mapH = generator.height;
         AStarPathfinding.Instance.RefreshGrid(mapW, mapH, combinedObstacles);

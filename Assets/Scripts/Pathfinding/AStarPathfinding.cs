@@ -1,5 +1,4 @@
-﻿// Assets/Scripts/Pathfinding/AStarPathfinding.cs
-using UnityEngine;
+﻿using UnityEngine;
 using System.Collections.Generic;
 
 public class Node
@@ -35,7 +34,6 @@ public class AStarPathfinding : MonoBehaviour
 
     private void Awake()
     {
-        // Singleton
         if (Instance == null) Instance = this;
         else Destroy(gameObject);
 
@@ -64,7 +62,7 @@ public class AStarPathfinding : MonoBehaviour
 
     public void SetObstacles(List<Vector2Int> obstaclePositions)
     {
-        // Tüm node'ları yeniden walkable yap
+        // Tüm node'ları walkable=true
         for (int x = 0; x < width; x++)
         {
             for (int y = 0; y < height; y++)
@@ -73,7 +71,7 @@ public class AStarPathfinding : MonoBehaviour
             }
         }
 
-        // Engelli noktaları kapat
+        // Engelli noktalar
         foreach (var pos in obstaclePositions)
         {
             if (IsInBounds(pos))
@@ -99,10 +97,11 @@ public class AStarPathfinding : MonoBehaviour
         while (openSet.Count > 0)
         {
             Node currentNode = openSet[0];
+            // En düşük fCost bul
             for (int i = 1; i < openSet.Count; i++)
             {
                 if (openSet[i].fCost < currentNode.fCost ||
-                    (openSet[i].fCost == currentNode.fCost && openSet[i].hCost < currentNode.hCost))
+                   (openSet[i].fCost == currentNode.fCost && openSet[i].hCost < currentNode.hCost))
                 {
                     currentNode = openSet[i];
                 }
@@ -111,19 +110,19 @@ public class AStarPathfinding : MonoBehaviour
             openSet.Remove(currentNode);
             closedSet.Add(currentNode);
 
+            // Hedef bulundu
             if (currentNode == endNode)
             {
-                // Yol bulundu
                 return RetracePath(startNode, endNode);
             }
 
+            // Komşuları incele
             foreach (Node neighbor in GetNeighbors(currentNode))
             {
                 if (!neighbor.isWalkable || closedSet.Contains(neighbor))
                     continue;
 
                 float tentativeGCost = currentNode.gCost + Vector2Int.Distance(currentNode.gridPos, neighbor.gridPos);
-
                 if (tentativeGCost < neighbor.gCost || !openSet.Contains(neighbor))
                 {
                     neighbor.gCost = tentativeGCost;
@@ -160,7 +159,14 @@ public class AStarPathfinding : MonoBehaviour
         return grid[pos.x, pos.y];
     }
 
-    private bool IsInBounds(Vector2Int pos)
+    public bool IsWalkable(Vector2Int pos)
+    {
+        Node node = GetNode(pos);
+        if (node == null) return false;
+        return node.isWalkable;
+    }
+
+    public bool IsInBounds(Vector2Int pos)
     {
         return (pos.x >= 0 && pos.x < width && pos.y >= 0 && pos.y < height);
     }
@@ -169,22 +175,23 @@ public class AStarPathfinding : MonoBehaviour
     {
         List<Node> neighbors = new List<Node>();
 
-        Vector2Int[] directions =
+        Vector2Int[] dirs =
         {
-            new Vector2Int( 1, 0),
-            new Vector2Int(-1, 0),
-            new Vector2Int( 0, 1),
-            new Vector2Int( 0,-1)
+            new Vector2Int(1,0),
+            new Vector2Int(-1,0),
+            new Vector2Int(0,1),
+            new Vector2Int(0,-1)
         };
 
-        foreach (var dir in directions)
+        foreach (Vector2Int dir in dirs)
         {
-            Vector2Int neighborPos = node.gridPos + dir;
-            if (IsInBounds(neighborPos))
+            Vector2Int neighPos = node.gridPos + dir;
+            if (IsInBounds(neighPos))
             {
-                neighbors.Add(GetNode(neighborPos));
+                neighbors.Add(GetNode(neighPos));
             }
         }
+
         return neighbors;
     }
 }
